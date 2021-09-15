@@ -26,6 +26,10 @@ private:
     void ERROR();
     void UNKNOWN();
 
+    void send_data() const;
+    void send_ack() const;
+    void send_error(unsigned short, std::string const&);
+
     int curr_block{0};
 
     int mesg_len;
