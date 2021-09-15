@@ -21,6 +21,38 @@ dg_echo(int sockfd, SA *pcliaddr, socklen_t clilen)
 
 */
 
+void start_conn(int sockfd, SA *pcliaddr, socklen_t clilen)
+{
+    int n;
+    socklen_t len;
+    char mesg[MAXLINE];
+    len = clilen;
+    n = Recvfrom(sockfd, mesg, MAXLINE, 0, pcliaddr, &len);
+
+    SA og_cli = *pcliaddr;
+
+    pid_t pid = Fork();
+    if (pid == 0) {
+        tftp_server::receiver_t receiver = [&](char d[MAXLINE]) -> int {
+            // consider first copying into a separate buffer
+            // and then into d, once we have matched the correct
+            // pcliaddr
+            return Recvfrom(sockfd, mesg, MAXLINE, 0, pcliaddr, &len);
+        };
+
+        tftp_server::sender_t sender = [&](char d[MAXLINE], int mesg_len) {
+            Sendto(sockfd, mesg, mesg_len, 0, pcliaddr, len);
+        };
+        unsigned short opcode = tftp_server::get_opcode(mesg);
+        if (opcode == RRQ_ID) {
+            tftp_server::tftp_sesh<tftp_server::tftp_reader> sesh(receiver, sender, mesg);
+        } else if (opcode == WRQ_ID) {
+            tftp_server::tftp_sesh<tftp_server::tftp_reader> sesh(receiver, sender, mesg);
+        }
+        exit(EXIT_SUCCESS);
+    }
+}
+
 
 int main(int argc, char** argv) {
     if (argc != 3) {
@@ -46,14 +78,9 @@ int main(int argc, char** argv) {
         servaddr.sin_port        = htons(curr_port);
  
         Bind(sockfd, (SA *) &servaddr, sizeof(servaddr));
-        
-        int n;
-        socklen_t len;
-        char mesg[MAXLINE];
-
-        //start_conn(sockfd, (SA *) &cliaddr, sizeof(cliaddr));
-        tftp_server::tftp_session tftp(sockfd, (SA *) &cliaddr, sizeof(cliaddr));
-        tftp.accept_message(true);
+        start_conn(sockfd, (SA *) &cliaddr, sizeof(cliaddr));
+        // tftp_server::tftp_session tftp(sockfd, (SA *) &cliaddr, sizeof(cliaddr));
+        // tftp.accept_message(true);
     }
 
     return EXIT_SUCCESS;

@@ -1,9 +1,4 @@
 #include "tftp_srv.h"
-#define RRQ_ID 1
-#define WRQ_ID 2
-#define DATA_ID 3
-#define ACK_ID 4
-#define ERROR_ID 5
 
 namespace tftp_server {
 tftp_session::tftp_session(int sockfd, 
@@ -55,17 +50,21 @@ void tftp_session::send_error(unsigned short ec,
     strcpy(mesg + 2, msg.c_str());
     mesg_len = msg.length() + 3;
     Sendto(sockfd, mesg, mesg_len, 0, pcliaddr, len);
+    exit(EXIT_SUCCESS);
 }
 
 void tftp_session::RRQ()
 {
-    filename = std::string(mesg + 2);
-    std::string mode = std::string(mesg + 3 + filename.length());
-    if (mode != "octet") {
-        send_error(0, "Only support octet.");
-        return;
-    }
+    // if (curr_state == State::PROCESSING_WRQ) {
+    //     send_error(0, "Requested RRQ and then WRQ.");
+    // } else if (curr_state == State::UNDECIDED) {
+    //     filename = std::string(mesg + 2);
+    //     std::string mode = std::string(mesg + 3 + filename.length());
+    //     if (mode != "octet") {
+    //         send_error(0, "Only support octet.");
+    //     }
 
+    // }
     accept_message(false);
 }
 
