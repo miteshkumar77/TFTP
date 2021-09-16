@@ -21,6 +21,44 @@ dg_echo(int sockfd, SA *pcliaddr, socklen_t clilen)
 
 */
 
+void start_conn(int sockfd, SA *pcliaddr, socklen_t clilen)
+{
+    int n;
+    socklen_t len;
+    char mesg[MAXLINE];
+    len = clilen;
+    n = Recvfrom(sockfd, mesg, MAXLINE, 0, pcliaddr, &len);
+
+    SA og_cli = *pcliaddr;
+    socklen_t og_len = len;
+
+    pid_t pid = Fork();
+    if (pid == 0) {
+        tftp_server::receiver_t receiver = [&](char d[MAXLINE]) -> int {
+            return Recvfrom(sockfd, d, MAXLINE, 0, pcliaddr, &len);
+        };
+
+        tftp_server::sender_t sender = [&](char d[MAXLINE], int d_len) {
+            std::cerr << "Sending " << d_len << " bytes" << std::endl;
+            Sendto(sockfd, d, d_len, 0, &og_cli, og_len);
+        };
+        unsigned short opcode = tftp_server::get_opcode(mesg);
+        if (opcode == RRQ_ID) {
+            tftp_server::tftp_sesh<tftp_server::tftp_reader>
+                sesh(receiver, sender, mesg);
+                sesh.RRQ();
+        } else if (opcode == WRQ_ID) {
+            tftp_server::tftp_sesh<tftp_server::tftp_writer>
+                sesh(receiver, sender, mesg);
+                sesh.WRQ();
+        } else {
+            tftp_server::tftp_sesh<tftp_server::tftp_reader>
+                sesh(receiver, sender, mesg);
+        }
+        exit(EXIT_SUCCESS);
+    }
+}
+
 
 int main(int argc, char** argv) {
     if (argc != 3) {
@@ -46,14 +84,9 @@ int main(int argc, char** argv) {
         servaddr.sin_port        = htons(curr_port);
  
         Bind(sockfd, (SA *) &servaddr, sizeof(servaddr));
-        
-        int n;
-        socklen_t len;
-        char mesg[MAXLINE];
-
-        //start_conn(sockfd, (SA *) &cliaddr, sizeof(cliaddr));
-        tftp_server::tftp_session tftp(sockfd, (SA *) &cliaddr, sizeof(cliaddr));
-        tftp.accept_message(true);
+        start_conn(sockfd, (SA *) &cliaddr, sizeof(cliaddr));
+        // tftp_server::tftp_session tftp(sockfd, (SA *) &cliaddr, sizeof(cliaddr));
+        // tftp.accept_message(true);
     }
 
     return EXIT_SUCCESS;
