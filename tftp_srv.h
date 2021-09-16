@@ -36,8 +36,10 @@ public:
     }
     
     void accept_message() {
+        std::cerr << "Blocked on recv" << std::endl;
         mesg_len = receiver(mesg);
         auto opcode = get_opcode(mesg);
+        std::cout << "Got opcode: " << opcode << std::endl;
         switch(opcode) {
             case RRQ_ID :
                 RRQ();
@@ -57,6 +59,7 @@ public:
             default :
                 UNKNOWN();
         }
+        std::cerr << "Done with transaction, exiting child process..." << std::endl;
         exit(EXIT_SUCCESS);
     }
 
@@ -106,35 +109,84 @@ public:
         sender(mesg, mesg_len);
     }
 
+    int curr_block{1};
     int mesg_len;
     char mesg[MAXLINE];
+    char deliver[MAXLINE];
     receiver_t const &receiver;
     sender_t const &sender;
+
+    std::string filename;
 };
 
 class tftp_reader : public tftp_sesh<tftp_reader> {
 public:
     bool handle_RRQ() {
-        return false;
+        if (curr_block > 1) return true;
+        filename = std::string(mesg + 2);
+        std::string mode = std::string(mesg + 3 + filename.length());
+        if (mode != "octet") {
+            send_error(0, "Invalid mode");
+            return false;
+        }
+        std::cerr << "Ready to read file: " << filename << " in octet mode" << std::endl;
+        return send_data() > 0;
     }
 
     bool handle_WRQ() {
+        send_error(0, "Sent WRQ in a RRQ.");
         return false;
     }
 
     bool handle_DATA() {
+        send_error(0, "Sent DATA in a RRQ");
         return false;
     }
 
     bool handle_ACK() {
-        return false;
+        unsigned short* block_ptr = ((unsigned short*)mesg) + 1;
+        unsigned short block = ntohs(*block_ptr);
+        std::cerr << "Got Acknowledgement for block " << block << " while curr_block = " << curr_block << std::endl;
+        if (block < curr_block) {
+            return true;
+        }
+        ++curr_block;
+        return send_data() > 0;
     }
 
     void handle_ERROR() {
+        std::cerr << "Error in client RRQ." << std::endl;
     }
 
     void handle_UNKNOWN() {
+        std::cerr << "Unknown op code" << std::endl;
     }
+
+    int send_data() {
+        std::cerr << "Reading bytes from file: " << filename << std::endl;
+        unsigned short* opcode_ptr = (unsigned short*)deliver;
+        *opcode_ptr = htons(DATA_ID);
+        unsigned short* block_ptr = opcode_ptr + 1;
+        *block_ptr = htons(curr_block);
+        std::ifstream input_file{filename, std::ios_base::binary};
+        if (!input_file.good()) {
+            std::cerr << "Error opening file: " << filename << std::endl;
+            send_error(0, "Unable to open file");
+            return 0;
+        }
+        input_file.seekg((curr_block - 1) * 512);
+        input_file.read(deliver + 4, 512);
+        int nread = input_file.gcount();
+        input_file.close();
+        sender(deliver, 4 + nread);
+        std::cerr << "Read " << nread << " bytes from file: " << filename << std::endl;
+        if (nread < 512) {
+            std::cerr << "Done reading file: " << filename << std::endl;
+        }
+    
+        return nread;
+    }
+
 
 };
 
@@ -163,39 +215,6 @@ public:
     void handle_UNKNOWN() {
     }
 
-};
-
-class tftp_session{
-public:
-    tftp_session(int , SA *, socklen_t);
-    void accept_message(bool);
-
-private:
-
-    void RRQ();
-    void WRQ();
-    void DATA();
-    void ACK();
-    void ERROR();
-    void UNKNOWN();
-
-    void send_data() const;
-    void send_ack() const;
-    void send_error(unsigned short, std::string const&);
-
-    int curr_block{0};
-    std::ifstream file_input;
-    std::ofstream file_output;
-
-    int mesg_len;
-    char mesg[MAXLINE];
-    socklen_t len;
-
-
-    std::string filename;
-    int const sockfd;
-    SA * pcliaddr;
-    socklen_t const clilen;
 };
 
 };

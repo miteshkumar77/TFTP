@@ -30,24 +30,30 @@ void start_conn(int sockfd, SA *pcliaddr, socklen_t clilen)
     n = Recvfrom(sockfd, mesg, MAXLINE, 0, pcliaddr, &len);
 
     SA og_cli = *pcliaddr;
+    socklen_t og_len = len;
 
     pid_t pid = Fork();
     if (pid == 0) {
         tftp_server::receiver_t receiver = [&](char d[MAXLINE]) -> int {
-            // consider first copying into a separate buffer
-            // and then into d, once we have matched the correct
-            // pcliaddr
             return Recvfrom(sockfd, mesg, MAXLINE, 0, pcliaddr, &len);
         };
 
-        tftp_server::sender_t sender = [&](char d[MAXLINE], int mesg_len) {
-            Sendto(sockfd, mesg, mesg_len, 0, pcliaddr, len);
+        tftp_server::sender_t sender = [&](char d[MAXLINE], int d_len) {
+            std::cerr << "Sending " << d_len << " bytes" << std::endl;
+            Sendto(sockfd, d, d_len, 0, &og_cli, og_len);
         };
         unsigned short opcode = tftp_server::get_opcode(mesg);
         if (opcode == RRQ_ID) {
-            tftp_server::tftp_sesh<tftp_server::tftp_reader> sesh(receiver, sender, mesg);
+            tftp_server::tftp_sesh<tftp_server::tftp_reader>
+                sesh(receiver, sender, mesg);
+                sesh.RRQ();
         } else if (opcode == WRQ_ID) {
-            tftp_server::tftp_sesh<tftp_server::tftp_reader> sesh(receiver, sender, mesg);
+            tftp_server::tftp_sesh<tftp_server::tftp_writer>
+                sesh(receiver, sender, mesg);
+                sesh.WRQ();
+        } else {
+            tftp_server::tftp_sesh<tftp_server::tftp_reader>
+                sesh(receiver, sender, mesg);
         }
         exit(EXIT_SUCCESS);
     }
