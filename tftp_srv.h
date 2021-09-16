@@ -194,6 +194,7 @@ public:
 class tftp_writer: public tftp_sesh<tftp_writer> {
 public:
     bool handle_RRQ() {
+        send_error(0, "Sent RRQ in a WRQ.");
         return false;
     }
 
@@ -206,13 +207,15 @@ public:
     }
 
     bool handle_ACK() {
-        return false;
+        send_error(0, "Sent ACK in a WRQ.");
     }
 
     void handle_ERROR() {
+        std::cerr << "Error in client WRQ." << std::endl;
     }
 
     void handle_UNKNOWN() {
+        std::cerr << "Unknown op code" << std::endl;
     }
 
 };

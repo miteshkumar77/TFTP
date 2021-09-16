@@ -35,7 +35,7 @@ void start_conn(int sockfd, SA *pcliaddr, socklen_t clilen)
     pid_t pid = Fork();
     if (pid == 0) {
         tftp_server::receiver_t receiver = [&](char d[MAXLINE]) -> int {
-            return Recvfrom(sockfd, mesg, MAXLINE, 0, pcliaddr, &len);
+            return Recvfrom(sockfd, d, MAXLINE, 0, pcliaddr, &len);
         };
 
         tftp_server::sender_t sender = [&](char d[MAXLINE], int d_len) {
