@@ -39,6 +39,9 @@ void sigchld_handler(int signum) {
     }
 }
 
+void sigalrm_handler(int signum) {
+}
+
 void start_conn(int sockfd, SA *pcliaddr, socklen_t clilen)
 {
     int n;
@@ -55,15 +58,39 @@ void start_conn(int sockfd, SA *pcliaddr, socklen_t clilen)
 
         char prev_send[MAXLINE];
         int prev_nbytes{0};
-
-        tftp_server::receiver_t receiver = [&](char d[MAXLINE]) -> int {
-            return Recvfrom(sockfd, d, MAXLINE, 0, pcliaddr, &len);
-        };
+        
+        Signal(SIGALRM, &sigalrm_handler);
 
         tftp_server::sender_t sender = [&](char d[MAXLINE], int d_len) {
+            memcpy(prev_send, d, MAXLINE);
+            prev_nbytes = d_len;
             std::cerr << "Sending " << d_len << " bytes" << std::endl;
             Sendto(sockfd, d, d_len, 0, &og_cli, og_len);
         };
+
+        tftp_server::receiver_t receiver = [&](char d[MAXLINE]) -> int {
+            int iters = 0;
+            int nrecv_receiver;
+            do {
+                alarm(SRESEND);
+                nrecv_receiver = Recvfrom(sockfd, d, MAXLINE, 0, pcliaddr, &len);
+                alarm(0);
+                if (nrecv_receiver == -1) {
+                    if (errno != EINTR) {
+                        perror("ERROR: Read from udp socket failed. Exiting...");
+                        exit(EXIT_FAILURE);
+                    } else if (prev_nbytes != 0) {
+                        sender(prev_send, prev_nbytes);
+                    }
+                }
+            } while(nrecv_receiver == -1 && iters < STERM);
+            if (iters == STERM) {
+                std::cerr << "Client timed out. Exiting..." << std::endl;
+                exit(EXIT_SUCCESS);
+            }
+            return nrecv_receiver;
+        };
+
         unsigned short opcode = tftp_server::get_opcode(mesg);
         if (opcode == RRQ_ID) {
             tftp_server::tftp_sesh<tftp_server::tftp_reader>
