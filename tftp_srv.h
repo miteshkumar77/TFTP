@@ -31,6 +31,9 @@ static unsigned short get_opcode(char mesg[MAXLINE]) {
     return ntohs(*opcode_ptr);
 }
 
+/*
+https://www.fluentcpp.com/2017/05/12/curiously-recurring-template-pattern/
+*/
 template<typename T>
 class tftp_sesh{
 public:

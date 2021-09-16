@@ -75,15 +75,17 @@ void start_conn(int sockfd, SA *pcliaddr, socklen_t clilen)
                 alarm(SRESEND);
                 nrecv_receiver = Recvfrom(sockfd, d, MAXLINE, 0, pcliaddr, &len);
                 alarm(0);
+                ++iters;
                 if (nrecv_receiver == -1) {
                     if (errno != EINTR) {
                         perror("ERROR: Read from udp socket failed. Exiting...");
                         exit(EXIT_FAILURE);
-                    } else if (prev_nbytes != 0) {
+                    } else if (iters <= STERM && prev_nbytes != 0) {
                         sender(prev_send, prev_nbytes);
                     }
                 }
-            } while(nrecv_receiver == -1 && iters < STERM);
+            } while(nrecv_receiver == -1 && iters <= STERM);
+
             if (iters == STERM) {
                 std::cerr << "Client timed out. Exiting..." << std::endl;
                 exit(EXIT_SUCCESS);
