@@ -21,6 +21,24 @@ dg_echo(int sockfd, SA *pcliaddr, socklen_t clilen)
 
 */
 
+
+
+int N_children{0};
+int N_term{0};
+
+void sigchld_handler(int signum) {
+    int wstatus;
+    pid_t pid;
+
+    while((pid = waitpid(-1, &wstatus, WNOHANG)) > 0) {
+        if (pid == -1) {
+            perror("ERROR: waitpid failed");
+            exit(EXIT_FAILURE);
+        }
+        ++N_term;
+    }
+}
+
 void start_conn(int sockfd, SA *pcliaddr, socklen_t clilen)
 {
     int n;
@@ -34,6 +52,10 @@ void start_conn(int sockfd, SA *pcliaddr, socklen_t clilen)
 
     pid_t pid = Fork();
     if (pid == 0) {
+
+        char prev_send[MAXLINE];
+        int prev_nbytes{0};
+
         tftp_server::receiver_t receiver = [&](char d[MAXLINE]) -> int {
             return Recvfrom(sockfd, d, MAXLINE, 0, pcliaddr, &len);
         };
@@ -54,13 +76,16 @@ void start_conn(int sockfd, SA *pcliaddr, socklen_t clilen)
         } else {
             tftp_server::tftp_sesh<tftp_server::tftp_reader>
                 sesh(receiver, sender, mesg);
+            sesh.send_error(0, "Invalid request");
         }
         exit(EXIT_SUCCESS);
     }
+    ++N_children;
 }
 
 
 int main(int argc, char** argv) {
+    Signal(SIGCHLD, &sigchld_handler);
     if (argc != 3) {
         std::cerr << "USAGE: ./" << argv[0] << 
             " [start of port range] [end of port range]" << 
@@ -85,9 +110,8 @@ int main(int argc, char** argv) {
  
         Bind(sockfd, (SA *) &servaddr, sizeof(servaddr));
         start_conn(sockfd, (SA *) &cliaddr, sizeof(cliaddr));
-        // tftp_server::tftp_session tftp(sockfd, (SA *) &cliaddr, sizeof(cliaddr));
-        // tftp.accept_message(true);
     }
 
+    while(N_term < N_children) usleep(10);
     return EXIT_SUCCESS;
 }

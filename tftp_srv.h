@@ -6,6 +6,7 @@
 #include <array>
 #include <functional>
 #include <fstream>
+#include <algorithm>
 
 extern "C" {
     #include "../unpv13e/lib/unp.h"
@@ -16,6 +17,9 @@ extern "C" {
 #define DATA_ID 3
 #define ACK_ID 4
 #define ERROR_ID 5
+
+#define SRESEND 1
+#define STERM 10
 
 namespace tftp_server {
 
@@ -109,7 +113,7 @@ public:
         sender(mesg, mesg_len);
     }
 
-    int curr_block{1};
+    unsigned short curr_block{0};
     int mesg_len;
     char mesg[MAXLINE];
     char deliver[MAXLINE];
@@ -122,6 +126,7 @@ public:
 class tftp_reader : public tftp_sesh<tftp_reader> {
 public:
     bool handle_RRQ() {
+        curr_block = 1;
         if (curr_block > 1) return true;
         filename = std::string(mesg + 2);
         std::string mode = std::string(mesg + 3 + filename.length());
@@ -130,7 +135,8 @@ public:
             return false;
         }
         std::cerr << "Ready to read file: " << filename << " in octet mode" << std::endl;
-        return send_data() > 0;
+        int num_sent = send_data();
+        return true;
     }
 
     bool handle_WRQ() {
@@ -174,6 +180,7 @@ public:
             send_error(0, "Unable to open file");
             return 0;
         }
+
         input_file.seekg((curr_block - 1) * 512);
         input_file.read(deliver + 4, 512);
         int nread = input_file.gcount();
@@ -199,15 +206,48 @@ public:
     }
 
     bool handle_WRQ() {
-        return false;
+        filename = std::string(mesg + 2);
+        std::string mode = std::string(mesg + 3 + filename.length());
+        if (mode != "octet") {
+            send_error(0, "Invalid mode");
+            return false;
+        }
+        std::ofstream output_file{filename, std::ios_base::binary |
+            std::ios_base::trunc};
+        if (!output_file.good()) {
+            send_error(0, "Error opening file");
+            return false;
+        }
+        output_file.close();
+        std::cerr << "Ready to write file: " << filename << " in octet mode" << std::endl;
+        send_ACK();
+        curr_block = 1;
+        return true;
     }
 
     bool handle_DATA() {
-        return false;
+        unsigned short* block_ptr = ((unsigned short*)mesg) + 1;
+        unsigned short block = ntohs(*block_ptr);
+        if (block == curr_block) {
+            std::ofstream output_file{filename, std::ios_base::binary 
+                | std::ios_base::app};
+            if (!output_file.good()) {
+                send_error(0, "Error opening file");
+                return false;
+            }
+            output_file.write((char*)(block_ptr + 1), mesg_len-4);
+            output_file.close();
+            ++curr_block;
+        }
+        std::swap(curr_block, block);
+        send_ACK();
+        std::swap(curr_block, block);
+        return mesg_len == 516;
     }
 
     bool handle_ACK() {
         send_error(0, "Sent ACK in a WRQ.");
+        return false;
     }
 
     void handle_ERROR() {
@@ -216,6 +256,15 @@ public:
 
     void handle_UNKNOWN() {
         std::cerr << "Unknown op code" << std::endl;
+    }
+
+    void send_ACK() {
+        unsigned short* opcode_ptr = (unsigned short*) deliver;
+        unsigned short* block_ptr = opcode_ptr + 1;
+        *opcode_ptr = htons(ACK_ID);
+        *block_ptr = htons(curr_block);
+        std::cerr << "Sending ACK for block: " << curr_block << std::endl;
+        sender(deliver, 4);
     }
 
 };
