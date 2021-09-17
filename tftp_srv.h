@@ -31,9 +31,6 @@ static unsigned short get_opcode(char mesg[MAXLINE]) {
     return ntohs(*opcode_ptr);
 }
 
-/*
-https://www.fluentcpp.com/2017/05/12/curiously-recurring-template-pattern/
-*/
 template<typename T>
 class tftp_sesh{
 public:
@@ -218,7 +215,7 @@ public:
         std::ofstream output_file{filename, std::ios_base::binary |
             std::ios_base::trunc};
         if (!output_file.good()) {
-            send_error(0, "Error opening file");
+            send_error(1, "Error opening file");
             return false;
         }
         output_file.close();
