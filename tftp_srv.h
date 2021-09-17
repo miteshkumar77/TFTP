@@ -1,5 +1,5 @@
-#ifndef TFTP_CLI_SRV_H
-#define TFTP_CLI_SRV_H
+#ifndef TFTP_SRV_H
+#define TFTP_SRV_H 
 
 #include <string>
 #include <iostream>
@@ -29,6 +29,21 @@ typedef std::function<void(char [MAXLINE], int)> sender_t;
 static unsigned short get_opcode(char mesg[MAXLINE]) {
     unsigned short* opcode_ptr = (unsigned short*)mesg;
     return ntohs(*opcode_ptr);
+}
+
+static unsigned short get_block(char mesg[MAXLINE]) {
+    unsigned short* block_ptr = ((unsigned short*)mesg)+1;
+    return ntohs(*block_ptr);
+}
+
+static void set_opcode(char mesg[MAXLINE], unsigned short opcode) {
+    unsigned short* opcode_ptr = (unsigned short*)mesg;
+    *opcode_ptr = htons(opcode);
+}
+
+static void set_block(char mesg[MAXLINE], unsigned short block) {
+    unsigned short* block_ptr = ((unsigned short*)mesg) + 1;
+    *block_ptr = htons(block);
 }
 
 template<typename T>

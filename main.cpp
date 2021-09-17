@@ -68,6 +68,10 @@ void start_conn(int sockfd, SA *pcliaddr, socklen_t clilen)
             Sendto(sockfd, d, d_len, 0, &og_cli, og_len);
         };
 
+        // sender should always be called atleast once before
+        // receiver is called, so that prev_send, prev_nbytes have values
+        // otherwise if there is a timeout, receiver will not have any
+        // data to retransmit.
         tftp_server::receiver_t receiver = [&](char d[MAXLINE]) -> int {
             int iters = 0;
             int nrecv_receiver;
