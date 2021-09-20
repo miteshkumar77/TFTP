@@ -1,27 +1,4 @@
 #include "tftp_srv.h"
-/*
-
-dg_echo(sockfd, (SA *) &cliaddr, sizeof(cliaddr));
-
-void
-dg_echo(int sockfd, SA *pcliaddr, socklen_t clilen)
-{
-        int                     n;
-        socklen_t       len;
-        char            mesg[MAXLINE];
- 
-        for ( ; ; ) {
-                len = clilen;
-                n = Recvfrom(sockfd, mesg, MAXLINE, 0, pcliaddr, &len);
- 
-                Sendto(sockfd, mesg, n, 0, pcliaddr, len);
-        }
-}
-
-
-*/
-
-
 
 int N_children{0};
 int N_term{0};
@@ -42,20 +19,36 @@ void sigchld_handler(int signum) {
 void sigalrm_handler(int signum) {
 }
 
-void start_conn(int sockfd, SA *pcliaddr, socklen_t clilen)
+int createEndpoint(int port, struct sockaddr_in& servaddr, in_addr_t in_addr) {
+    bzero(&servaddr, sizeof(servaddr));
+    int sockfd = Socket(AF_INET, SOCK_DGRAM, 0);
+    servaddr.sin_family = AF_INET;
+    servaddr.sin_addr.s_addr = in_addr; 
+    servaddr.sin_port = htons(port);
+    Bind(sockfd, (SA *) &servaddr, sizeof(servaddr));
+    return sockfd;
+}
+
+void start_conn(int sockfd, SA *pcliaddr, socklen_t clilen, int tid)
 {
     int n;
     socklen_t len;
+
     char mesg[MAXLINE];
     len = clilen;
     n = Recvfrom(sockfd, mesg, MAXLINE, 0, pcliaddr, &len);
 
-    SA og_cli = *pcliaddr;
-    socklen_t og_len = len;
+
 
     pid_t pid = Fork();
     if (pid == 0) {
+        SA og_cli = *pcliaddr;
+        socklen_t og_len = len;
+        struct sockaddr_in servaddr;
+        Close(sockfd);
+        sockfd = createEndpoint(tid, servaddr, htonl(INADDR_ANY));
 
+// ((sockaddr_in*)pcliaddr)->sin_addr.s_addr
         char prev_send[MAXLINE];
         int prev_nbytes{0};
         
@@ -82,9 +75,10 @@ void start_conn(int sockfd, SA *pcliaddr, socklen_t clilen)
                 ++iters;
                 if (nrecv_receiver == -1) {
                     if (errno != EINTR) {
-                        perror("ERROR: Read from udp socket failed. Exiting...");
+                        perror("ERROR: Read from udp socket failed. Exiting...\n");
                         exit(EXIT_FAILURE);
                     } else if (iters <= STERM && prev_nbytes != 0) {
+                        perror("1s timeout reached. Retransmitting previous packet...\n");
                         sender(prev_send, prev_nbytes);
                     }
                 }
@@ -128,23 +122,15 @@ int main(int argc, char** argv) {
 
     int start_port = std::stoi(std::string(argv[1]));
     int end_port = std::stoi(std::string(argv[2]));
+    struct sockaddr_in      servaddr;
+    int sockfd = createEndpoint(start_port, servaddr, htonl(INADDR_ANY));
 
-    for (int curr_port = start_port; 
+    for (int curr_port = start_port+1; 
         curr_port <= end_port; ++curr_port) {
-        int                                     sockfd;
-        struct sockaddr_in      servaddr, cliaddr;
- 
-        sockfd = Socket(AF_INET, SOCK_DGRAM, 0);
- 
-        bzero(&servaddr, sizeof(servaddr));
-        servaddr.sin_family      = AF_INET;
-        servaddr.sin_addr.s_addr = htonl(INADDR_ANY);
-        servaddr.sin_port        = htons(curr_port);
- 
-        Bind(sockfd, (SA *) &servaddr, sizeof(servaddr));
-        start_conn(sockfd, (SA *) &cliaddr, sizeof(cliaddr));
+        struct sockaddr_in cliaddr;
+        start_conn(sockfd, (SA *) &cliaddr, sizeof(cliaddr), curr_port);
     }
-
+    Close(sockfd);
     while(N_term < N_children) usleep(10);
     return EXIT_SUCCESS;
 }

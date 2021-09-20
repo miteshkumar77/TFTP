@@ -1,6 +1,7 @@
 CC = clang++
 
-LIBS = ../unpv13e/libunp.a
+# LIBS = ../unpv13e/libunp.a
+LIBS = libunp.a
 
 TARGET = tftp.out
 
