@@ -32,7 +32,7 @@ Program Workflow:
 - Faced some challenges with the "multi-client" test on Submitty.
 - Figuring out a way to elegantly handle empty files, as well as handling SAS.
 
-## Team work
+## Team Work
 Time spent: 7 hrs total between team members
 
 Mitesh: Working application of assignment
