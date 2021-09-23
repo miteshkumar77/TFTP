@@ -24,47 +24,62 @@ extern "C" {
 
 namespace tftp_server {
 
-// function to read from the udp endpoint
-// after every fixed duration of inactivity, retransmit 
-// what was last sent by sender
+/* Reads from the udp endpoint after every fixed duration of inactivity,
+retransmit what was last sent by sender */
 typedef std::function<int(char [MAXLINE])> receiver_t;
 
-// function to send a packet from the udp endpoint
-// save a copy of this buffer externally so that it 
-// can be retransmitted after a timeout
+/* Sends a packet from the udp endpoint,
+saves a copy of this buffer externally so that it can be retransmitted after a timeout */
 typedef std::function<void(char [MAXLINE], int)> sender_t;
 
 
+/* Gets opcode from message in data packet
+:param mesg: message in data packet  */
 static unsigned short get_opcode(char mesg[MAXLINE]) {
     unsigned short* opcode_ptr = (unsigned short*)mesg;
     return ntohs(*opcode_ptr);
 }
 
+/* Gets data packet number from message in data packet
+:param mesg: message in data packet  */
 static unsigned short get_block(char mesg[MAXLINE]) {
     unsigned short* block_ptr = ((unsigned short*)mesg)+1;
     return ntohs(*block_ptr);
 }
 
+/* Sets opcode given from input into message from data packet
+:param mesg: message in data packet
+:param opcode: opcode to be set in data packet  */
 static void set_opcode(char mesg[MAXLINE], unsigned short opcode) {
     unsigned short* opcode_ptr = (unsigned short*)mesg;
     *opcode_ptr = htons(opcode);
 }
 
+/* Sets data packet number given from input into message from data packet
+:param mesg: message in data packet
+:param block: data packet number to be set in data packet  */
 static void set_block(char mesg[MAXLINE], unsigned short block) {
     unsigned short* block_ptr = ((unsigned short*)mesg) + 1;
     *block_ptr = htons(block);
 }
 
+/* Sets error code given from input into message from data packet
+:param mesg: message in data packet
+:param ec: error code to be set in data packet  */
 static void set_ec(char mesg[MAXLINE], unsigned short ec) {
     unsigned short* ec_ptr = ((unsigned short*)mesg) + 1;
     *ec_ptr = htons(ec);
 }
 
+/* Gets error code from message in data packet
+:param mesg: message in data packet  */
 static unsigned short get_ec(char mesg[MAXLINE]) {
     unsigned short* ec_ptr = ((unsigned short*)mesg) + 1;
     return ntohs(*ec_ptr);
 }
 
+/* Gets error message from data packet
+:param mesg: message in data packet  */
 static std::string get_ErrMsg(char mesg[MAXLINE]) {
     char* msg_ptr = ((char*)mesg) + 4;
     return std::string(msg_ptr);
@@ -116,6 +131,7 @@ public:
         exit(EXIT_SUCCESS);
     }
 
+    // Handle read request
     void RRQ() {
         T& u = static_cast<T&>(*this);
         if (u.handle_RRQ()) {
@@ -123,6 +139,7 @@ public:
         }
     }
 
+    // Handle write request
     void WRQ() {
         T& u = static_cast<T&>(*this);
         if (u.handle_WRQ()) {
@@ -137,6 +154,7 @@ public:
         }
     }
 
+    // Handle acknowledgements
     void ACK() {
         T& u = static_cast<T&>(*this);
         if (u.handle_ACK()) {
@@ -144,6 +162,7 @@ public:
         }
     }
 
+    // Handle errors
     void ERROR() {
         T& u = static_cast<T&>(*this);
         u.handle_ERROR();
@@ -154,6 +173,9 @@ public:
         u.handle_UNKNOWN();
     }
 
+    /* Sends error message
+    :param ec: error code from data packet
+    :param msg: error message to be sent back */
     void send_error(unsigned short ec, std::string const& msg) {
         set_opcode(deliver, ERROR_ID);
         set_ec(deliver, ec);
@@ -247,12 +269,15 @@ public:
             return 0;
         }
 
+        //start reading file
         input_file.seekg((curr_block - 1) * 512);
         input_file.read(deliver + 4, 512);
         int nread = input_file.gcount();
         input_file.close();
         sender(deliver, 4 + nread);
         std::cerr << "Read " << nread << " bytes from file: " << filename << std::endl;
+        
+        //stop reading file once 512 bytes read
         if (nread < 512) {
             std::cerr << "Done reading file: " << filename << std::endl;
         }
@@ -314,11 +339,13 @@ public:
         return mesg_len == 516;
     }
 
+    // Send acknowledgement to client when data packet is read
     bool handle_ACK() {
         send_error(0, "Sent ACK in a WRQ.");
         return false;
     }
 
+    // Send error code
     void handle_ERROR() {
         unsigned short ec = get_ec(mesg);
         std::string const err_msg = get_ErrMsg(mesg);
