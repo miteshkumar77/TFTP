@@ -19,6 +19,10 @@ void sigchld_handler(int signum) {
 void sigalrm_handler(int signum) {
 }
 
+/* Creates endpoints for tftp server
+:param port: port number for server
+:param servaddr: server address
+:param inaddr: */
 int createEndpoint(int port, struct sockaddr_in& servaddr, in_addr_t in_addr) {
     bzero(&servaddr, sizeof(servaddr));
     int sockfd = Socket(AF_INET, SOCK_DGRAM, 0);
@@ -29,6 +33,11 @@ int createEndpoint(int port, struct sockaddr_in& servaddr, in_addr_t in_addr) {
     return sockfd;
 }
 
+/* Starts connection between client and server
+:param sockfd: socket file descriptor
+:param pcliaddr: client address
+:param clilen: len of client
+:param tid: thread id */
 void start_conn(int sockfd, SA *pcliaddr, socklen_t clilen, int tid)
 {
     int n;
@@ -48,7 +57,6 @@ void start_conn(int sockfd, SA *pcliaddr, socklen_t clilen, int tid)
         Close(sockfd);
         sockfd = createEndpoint(tid, servaddr, htonl(INADDR_ANY));
 
-// ((sockaddr_in*)pcliaddr)->sin_addr.s_addr
         char prev_send[MAXLINE];
         int prev_nbytes{0};
         
